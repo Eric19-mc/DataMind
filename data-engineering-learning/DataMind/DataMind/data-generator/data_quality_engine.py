@@ -13,7 +13,7 @@ DB_NAME = "datamind"
 
 
 # =========================
-# 连接 MySQL
+# 数据库连接
 # =========================
 
 connection = pymysql.connect(
@@ -22,138 +22,115 @@ connection = pymysql.connect(
     user=DB_USER,
     password=DB_PASSWORD,
     database=DB_NAME,
-    charset="utf8mb4"
+    charset="utf8mb4",
+    cursorclass=pymysql.cursors.DictCursor
 )
 
 
 # =========================
-# 质量检查函数
+# 生成检查 SQL
 # =========================
 
-def check_rule(cursor, rule):
+def build_sql(rule):
 
-    rule_id = rule["rule_id"]
     table_name = rule["table_name"]
-    rule_name = rule["rule_name"]
+    column_name = rule["column_name"]
     rule_type = rule["rule_type"]
+    rule_value = rule["rule_value"]
 
-    # ---------------------------------
-    # 规则1：用户ID非空
-    # ---------------------------------
 
-    if rule_id == 1:
+    # =========================
+    # NOT_NULL
+    # =========================
 
-        sql = """
-              SELECT COUNT(*)
-              FROM dim_user
-              WHERE user_id IS NULL
-                 OR user_id = '' \
-              """
+    if rule_type == "NOT_NULL":
 
-    # ---------------------------------
-    # 规则2：用户年龄范围
-    # ---------------------------------
+        sql = f"""
+            SELECT COUNT(*) AS error_count
+            FROM `{table_name}`
+            WHERE `{column_name}` IS NULL
+               OR `{column_name}` = ''
+        """
 
-    elif rule_id == 2:
+        return sql
 
-        sql = """
-              SELECT COUNT(*)
-              FROM dim_user
-              WHERE age < 18
-                 OR age > 35
-                 OR age IS NULL \
-              """
 
-    # ---------------------------------
-    # 规则3：课程价格非负
-    # ---------------------------------
+    # =========================
+    # RANGE
+    # =========================
 
-    elif rule_id == 3:
+    elif rule_type == "RANGE":
 
-        sql = """
-              SELECT COUNT(*)
-              FROM dim_course
-              WHERE price < 0
-                 OR price IS NULL \
-              """
+        values = rule_value.split(",")
 
-    # ---------------------------------
-    # 规则4：行为类型合法
-    # ---------------------------------
+        min_value = values[0]
+        max_value = values[1] if len(values) > 1 else None
 
-    elif rule_id == 4:
+        if max_value is not None:
 
-        sql = """
-              SELECT COUNT(*)
-              FROM fact_user_behavior
-              WHERE behavior_type NOT IN (
-                                          'view',
-                                          'favorite',
-                                          'start_learning',
-                                          'finish',
-                                          'buy'
-                  ) \
-              """
+            sql = f"""
+                SELECT COUNT(*) AS error_count
+                FROM `{table_name}`
+                WHERE `{column_name}` < {min_value}
+                   OR `{column_name}` > {max_value}
+                   OR `{column_name}` IS NULL
+            """
 
-    # ---------------------------------
-    # 规则5：学习时长范围
-    # ---------------------------------
+        else:
 
-    elif rule_id == 5:
+            sql = f"""
+                SELECT COUNT(*) AS error_count
+                FROM `{table_name}`
+                WHERE `{column_name}` < {min_value}
+                   OR `{column_name}` IS NULL
+            """
 
-        sql = """
-              SELECT COUNT(*)
-              FROM fact_user_behavior
-              WHERE duration < 0
-                 OR duration > 3600
-                 OR duration IS NULL \
-              """
+        return sql
 
-    # ---------------------------------
-    # 规则6：用户引用完整
-    # ---------------------------------
 
-    elif rule_id == 6:
+    # =========================
+    # ENUM
+    # =========================
 
-        sql = """
-              SELECT COUNT(*)
-              FROM fact_user_behavior b
-                       LEFT JOIN dim_user u
-                                 ON b.user_id = u.user_id
-              WHERE u.user_id IS NULL \
-              """
+    elif rule_type == "ENUM":
 
-    # ---------------------------------
-    # 规则7：课程引用完整
-    # ---------------------------------
+        values = rule_value.split(",")
 
-    elif rule_id == 7:
+        value_list = ",".join(
+            f"'{value}'"
+            for value in values
+        )
 
-        sql = """
-              SELECT COUNT(*)
-              FROM fact_user_behavior b
-                       LEFT JOIN dim_course c
-                                 ON b.course_id = c.course_id
-              WHERE c.course_id IS NULL \
-              """
+        sql = f"""
+            SELECT COUNT(*) AS error_count
+            FROM `{table_name}`
+            WHERE `{column_name}` NOT IN ({value_list})
+               OR `{column_name}` IS NULL
+        """
 
-    else:
+        return sql
 
-        return None
 
-    cursor.execute(sql)
+    # =========================
+    # REFERENCE
+    # =========================
 
-    error_count = cursor.fetchone()[0]
+    elif rule_type == "REFERENCE":
 
-    status = "PASS" if error_count == 0 else "FAIL"
+        reference_table, reference_column = rule_value.split(".")
 
-    return {
-        "rule_id": rule_id,
-        "table_name": table_name,
-        "rule_name": rule_name,
-        "status": status,
-        "error_count": error_count
-    }
+        sql = f"""
+            SELECT COUNT(*) AS error_count
+            FROM `{table_name}` t
+            LEFT JOIN `{reference_table}` r
+                ON t.`{column_name}` = r.`{reference_column}`
+            WHERE r.`{reference_column}` IS NULL
+        """
+
+        return sql
+
+
+    return None
 
 
 # =========================
@@ -162,12 +139,10 @@ def check_rule(cursor, rule):
 
 try:
 
-    with connection.cursor(
-            pymysql.cursors.DictCursor
-    ) as cursor:
+    with connection.cursor() as cursor:
 
         # =========================
-        # 读取启用的质量规则
+        # 读取启用规则
         # =========================
 
         cursor.execute("""
@@ -175,7 +150,9 @@ try:
                            rule_id,
                            table_name,
                            rule_name,
-                           rule_type
+                           column_name,
+                           rule_type,
+                           rule_value
                        FROM data_quality_rule
                        WHERE enabled = 1
                        ORDER BY rule_id
@@ -184,20 +161,63 @@ try:
         rules = cursor.fetchall()
 
 
-        # =========================
-        # 执行规则
-        # =========================
-
         results = []
+
+
+        # =========================
+        # 执行所有规则
+        # =========================
 
         for rule in rules:
 
-            result = check_rule(cursor, rule)
+            sql = build_sql(rule)
 
-            if result is not None:
+            if sql is None:
 
-                results.append(result)
+                continue
 
+            cursor.execute(sql)
+
+            result = cursor.fetchone()
+
+            error_count = result["error_count"]
+
+            status = (
+                "PASS"
+                if error_count == 0
+                else "FAIL"
+            )
+
+            results.append({
+                "rule_id": rule["rule_id"],
+                "table_name": rule["table_name"],
+                "rule_name": rule["rule_name"],
+                "status": status,
+                "error_count": error_count
+            })
+
+            cursor.execute("""
+                           INSERT INTO data_quality_result
+                           (
+                               rule_id,
+                               table_name,
+                               rule_name,
+                               status,
+                               error_count,
+                               check_time
+                           )
+                           VALUES
+                               (%s, %s, %s, %s, %s, NOW())
+                           """, (
+                               rule["rule_id"],
+                               rule["table_name"],
+                               rule["rule_name"],
+                               status,
+                               error_count
+                           ))
+
+
+        connection.commit()
 
         # =========================
         # 输出报告
@@ -207,7 +227,6 @@ try:
         print("========================================")
         print("       DataMind Quality Engine")
         print("========================================")
-
         print()
 
         for result in results:
@@ -222,7 +241,7 @@ try:
 
 
         # =========================
-        # 计算评分
+        # 计算通过率
         # =========================
 
         total_rules = len(results)
@@ -250,6 +269,7 @@ try:
 
 except Exception as e:
 
+    print()
     print("数据质量引擎运行失败：")
     print(e)
 
@@ -260,4 +280,3 @@ finally:
 
     print()
     print("MySQL 连接已关闭。")
-
