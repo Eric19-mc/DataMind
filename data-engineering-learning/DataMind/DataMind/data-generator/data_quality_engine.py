@@ -1,5 +1,5 @@
 import pymysql
-
+from datetime import datetime
 
 # =========================
 # MySQL 配置
@@ -11,6 +11,13 @@ DB_USER = "root"
 DB_PASSWORD = "050622"
 DB_NAME = "datamind"
 
+# =========================
+# 本次检测批次ID
+# =========================
+
+check_batch_id = datetime.now().strftime(
+    "batch_%Y%m%d_%H%M%S"
+)
 
 # =========================
 # 数据库连接
@@ -204,16 +211,18 @@ try:
                                rule_name,
                                status,
                                error_count,
-                               check_time
+                               check_time,
+                               check_batch_id
                            )
                            VALUES
-                               (%s, %s, %s, %s, %s, NOW())
+                               (%s, %s, %s, %s, %s, NOW(),%s)
                            """, (
                                rule["rule_id"],
                                rule["table_name"],
                                rule["rule_name"],
                                status,
-                               error_count
+                               error_count,
+                               check_batch_id
                            ))
 
 
@@ -228,6 +237,7 @@ try:
         print("       DataMind Quality Engine")
         print("========================================")
         print()
+        print(f"检测批次：{check_batch_id}")
 
         for result in results:
 
