@@ -39,18 +39,35 @@ class CourseHeatProcessFunction(KeyedProcessFunction):
         course_id = value[1]
         behavior_type = value[2]
 
+        # =========================
+        # 不同行为对应不同热度分
+        # =========================
+        weights = {
+            "view": 1,
+            "favorite": 3,
+            "start_learning": 2,
+            "finish": 5
+        }
+
+        score = weights.get(behavior_type, 0)
+
+        # =========================
         # 获取当前课程热度
+        # =========================
         current_count = self.count_state.value()
 
         if current_count is None:
             current_count = 0
 
-        current_count += 1
+        # 累加热度
+        current_count += score
 
-        # 更新 Flink 状态
+        # 更新 Flink State
         self.count_state.update(current_count)
 
+        # =========================
         # 写入 Redis
+        # =========================
         redis_key = f"datamind:course:heat:{course_id}"
 
         self.redis.set(
@@ -58,7 +75,19 @@ class CourseHeatProcessFunction(KeyedProcessFunction):
             current_count
         )
 
+        # =========================
+        # 更新课程热度排行榜
+        # =========================
+        self.redis.zadd(
+            "datamind:course:ranking",
+            {
+                course_id: current_count
+            }
+        )
+
+        # =========================
         # 输出
+        # =========================
         yield (
             user_id,
             course_id,
