@@ -1,0 +1,124 @@
+# =========================
+
+# Python
+
+# =========================
+
+**pycache**/
+*.py[cod]
+*$py.class
+
+# Python virtual environment
+
+.venv/
+venv/
+env/
+ENV/
+
+# Python packaging
+
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# =========================
+
+# Environment & Secrets
+
+# =========================
+
+.env
+.env.*
+!.env.example
+
+# =========================
+
+# IntelliJ IDEA
+
+# =========================
+
+.idea/
+*.iml
+
+# =========================
+
+# VS Code
+
+# =========================
+
+.vscode/
+
+# =========================
+
+# Jupyter Notebook
+
+# =========================
+
+.ipynb_checkpoints/
+
+# =========================
+
+# Logs
+
+# =========================
+
+*.log
+logs/
+
+# =========================
+
+# Temporary files
+
+# =========================
+
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# =========================
+
+# DataMind generated data
+
+# =========================
+
+# Spark temporary output
+
+spark-warehouse/
+metastore_db/
+
+# Spark checkpoint
+
+checkpoint/
+
+# Temporary output
+
+tmp/
+temp/
+
+# =========================
+
+# Hadoop / Spark local files
+
+# =========================
+
+*.pid
+*.lck
+
+# =========================
+
+# OS
+
+# =========================
+
+Desktop.ini
+$RECYCLE.BIN/
+# =========================
+# DataMind generated data
+# =========================
+
+data/
