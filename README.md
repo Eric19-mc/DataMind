@@ -1,4 +1,3 @@
-````markdown
 # DataMind
 
 > AI 驱动的数据开发与数据治理实践项目
